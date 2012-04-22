@@ -28,16 +28,22 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import net.sf.libgrowl.CallBackListener;
 import net.sf.libgrowl.CallBackResponse;
 import net.sf.libgrowl.NotificationResponse;
 import net.sf.libgrowl.SubscribeResponse;
 
 public abstract class Message implements IProtocol {
+	  
+  private static ExecutorService _executorService = Executors.newCachedThreadPool();
 
   private StringBuilder mBuffer;
   private IResponse response;
   private boolean callBack;
+  private CallBackListener listener;
   
   /**
    * container for all resources which need to be sent to Growl
@@ -144,21 +150,49 @@ public abstract class Message implements IProtocol {
       //System.out.println(response);
       
       if (isCallBack()) {
-    	  line = in.readLine();
-          while (line != null && !line.isEmpty()) {
-            buffer.append(line).append(IProtocol.LINE_BREAK);
-            line = in.readLine();
+        Runnable runnable = new Runnable() {
+          public void run() {
+            try {
+              socket.setSoTimeout(0);
+
+              StringBuilder buffer = new StringBuilder();
+              boolean callBackReceived = false;
+              String line = in.readLine();
+
+              while (line != null && !(callBackReceived && line.isEmpty())) {
+                buffer.append(line).append(IProtocol.LINE_BREAK);
+                  
+                if (line.contains("CALLBACK")) {
+                  	callBackReceived = true;	
+                }
+ 
+                line = in.readLine();
+              }
+          	    
+          	  String responseString = buffer.toString();      
+              response = GetResponseObject(responseString);
+              
+              handleCallback(response);
+              
+              writer.close();
+              out.close();
+        	  in.close();
+        	  socket.close();
+			}
+            catch (IOException e) {
+            	// log error
+            }
           }
-          responseString = buffer.toString();      
-          response = GetResponseObject(responseString);
-          //System.out.println("------------------------");
-          //System.out.println(response);
+        };
+    	
+        _executorService.submit(runnable);
       }
-      
-      writer.close();
-      out.close();
-      in.close();
-      socket.close();
+      else {
+    	writer.close();
+    	out.close();
+    	in.close();
+    	socket.close();
+      }
 
     } catch (UnknownHostException e) {
       return IResponse.ERROR;
@@ -168,6 +202,24 @@ public abstract class Message implements IProtocol {
     return response.getStatus();
   }
 
+  private void handleCallback(IResponse response) throws IOException {
+      if (response instanceof CallBackResponse) {
+    	  CallBackResponse callBackResponse = (CallBackResponse)response;
+    	  
+    	  String callBackResult = callBackResponse.getNotificationCallbackResult();
+    	  
+    	  if (callBackResult.contains("CLICK")) {
+    		  listener.onClick(callBackResponse);    		  
+    	  }
+    	  else if (callBackResult.contains("CLOSE")) {
+    		  listener.onClose(callBackResponse);    		  
+    	  }
+    	  else if (callBackResult.contains("TIMEOUT")) {
+    		  listener.onTimeout(callBackResponse);    		  
+    	  }
+      }
+  }
+  
   private IResponse GetResponseObject(String responseString) {
 	if (responseString.contains(IProtocol.MESSAGETYPE_CALLBACK)) {
 		return new CallBackResponse(responseString);
@@ -230,6 +282,10 @@ public abstract class Message implements IProtocol {
 
   public boolean isCallBack() {
 	return callBack;
+  }
+
+  protected void setCallBackListener(CallBackListener listener) {
+	this.listener = listener;
   }
   
 }

@@ -16,12 +16,18 @@
  */
 package net.sf.libgrowl.internal;
 
+import net.sf.libgrowl.CallBackListener;
 import net.sf.libgrowl.Notification;
-import java.util.UUID;
 
 public class NotifyMessage extends Message {
 
   public NotifyMessage(final Notification notification, final String password) {
+	  this(notification, password, null);
+  }
+
+  public NotifyMessage(final Notification notification, final String password,
+  	final CallBackListener listener) {
+
     super(IProtocol.MESSAGETYPE_NOTIFY, password);
 
     // application name, required
@@ -71,6 +77,9 @@ public class NotifyMessage extends Message {
     	header(IProtocol.HEADER_NOTIFICATION_CALLBACK_CONTEXT, context);
     	header(IProtocol.HEADER_NOTIFICATION_CALLBACK_CONTEXT_TYPE, contextType);
     	this.setCallBack(true);
+    }
+	if (listener != null) {
+    	this.setCallBackListener(listener);
     }
   }
 }

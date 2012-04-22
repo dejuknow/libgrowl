@@ -168,12 +168,16 @@ public class GrowlConnector {
    * @return response, see {@link IResponse}
    */
   public final int notify(final Notification notification) {
+    return notify(notification, null);
+  }
+ 
+  public final int notify(final Notification notification, final CallBackListener listener) {
     if (!isRegistered(notification.getNotificationType())) {
       System.err.println("You need to register the notification type "
           + notification.getNotificationType().getDisplayName()
           + " before using it in notifications.");
     }
-    final Message message = new NotifyMessage(notification, mPassword);
+    final Message message = new NotifyMessage(notification, mPassword, listener);
     final int result = message.send(mHost, mPort);
     setLastResponse(message.getResponse());
     return result;
