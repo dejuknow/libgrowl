@@ -20,9 +20,9 @@ package net.sf.libgrowl.internal;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -118,21 +118,22 @@ public abstract class Message implements IProtocol {
 
   public int send(final String host, int port) {
     try {
-      writeResources();
-      // always have a line break and an empty line at the message end
-      String messageText = mBuffer.toString();
-      while (!messageText.endsWith(IProtocol.LINE_BREAK + IProtocol.LINE_BREAK)) {
-        messageText = messageText + IProtocol.LINE_BREAK;
-      }
-      // now start the communication
       final Socket socket = new Socket(host, port);
-      socket.setSoTimeout(10000);
+      socket.setSoTimeout(15000);
       final BufferedReader in = new BufferedReader(new InputStreamReader(socket
           .getInputStream()));
       final OutputStreamWriter out = new OutputStreamWriter(socket
           .getOutputStream(), "UTF-8");
       final PrintWriter writer = new PrintWriter(out);
+
+      String messageText = mBuffer.toString();
+
       writer.write(messageText);
+      writer.flush();
+
+      writeResources(socket);
+
+      writer.write(IProtocol.LINE_BREAK + IProtocol.LINE_BREAK);
       writer.flush();
       //System.out.println("------------------------");
       //System.out.println(messageText);
@@ -241,9 +242,16 @@ public abstract class Message implements IProtocol {
 
 /**
    * write the collected resources to the output stream
+ * @throws IOException 
    */
-  private void writeResources() {
+  private void writeResources(Socket socket) throws IOException {
+    OutputStream output = socket.getOutputStream();
+    OutputStreamWriter out = new OutputStreamWriter(socket
+        .getOutputStream(), "UTF-8");
+    PrintWriter writer = new PrintWriter(out);
+
     for (Map.Entry<String, byte[]> entry : mResources.entrySet()) {
+      mBuffer = new StringBuilder();
       lineBreak();
       final String id = entry.getKey();
       byte[] data = entry.getValue();
@@ -253,16 +261,13 @@ public abstract class Message implements IProtocol {
       header(IProtocol.HEADER_IDENTIFIER, id);
       header(IProtocol.HEADER_LENGTH, data.length);
       lineBreak();
-      try {
-        mBuffer.append(new String(data, "UTF-8"));
-      } catch (UnsupportedEncodingException e) {
-        e.printStackTrace();
-      }
-      /*
-       * for (byte b : data) { mBuffer.append((char) b); }
-       */
-      lineBreak();
+
+      writer.write(mBuffer.toString());
+      writer.flush();
+      output.write(data);
     }
+	
+	lineBreak();
   }
 
   /**
