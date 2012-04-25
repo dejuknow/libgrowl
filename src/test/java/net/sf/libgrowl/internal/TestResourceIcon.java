@@ -25,9 +25,9 @@ public class TestResourceIcon {
 	
 	@Before
 	public void setUp() throws Exception {
-        growl = new GrowlConnector("10.0.1.10");
+        growl = new GrowlConnector("localhost");
         assertNotNull(growl);
-        growl.setPassword("test");
+        // growl.setPassword("test");
         
 		icon = new File("src/test/resources/JENKINS.png");
 	}

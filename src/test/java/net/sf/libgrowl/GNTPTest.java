@@ -1,7 +1,7 @@
 package net.sf.libgrowl;
 
-import static org.junit.Assert.*;
-
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import net.sf.libgrowl.internal.IResponse;
 
 import org.junit.After;
@@ -23,10 +23,10 @@ public class GNTPTest {
     @Before 
     public void setUp() { 
         // connect to Growl on the given host
-        growl = new GrowlConnector("10.0.1.10");
+        growl = new GrowlConnector("localhost");
         assertNotNull(growl);
         
-        growl.setPassword("test");
+//        growl.setPassword("test");
         
         // give your application a name and icon (optionally)
         downloadApp = new Application("Downloader", "http://jenkins-ci.org/images/butler.png");
@@ -50,7 +50,7 @@ public class GNTPTest {
     
     @Test
     public void testNotification() {
-    	Notification ubuntuDownload = new Notification(downloadApp, downloadStarted, "Ubuntu 9.4", "654 MB"); 
+    	Notification ubuntuDownload = new Notification(downloadApp, downloadStarted, "Test", "Standard Notification"); 
     	
         // finally send the notification
         growl.notify(ubuntuDownload);
@@ -62,22 +62,69 @@ public class GNTPTest {
         assertEquals("NOTIFY", response.getResponseAction());
     }
     
-    @Test
-    public void testCallback() {
+    @Test(timeout=11000)
+    public void testCallback() throws InterruptedException {
 
-        // create a notification with specific title and message
-        Notification ubuntuDownload = new Notification(downloadApp, downloadStarted, "Ubuntu 9.4", "654 MB");
-        ubuntuDownload.setCallBackSocket("blah", "blah1");
+        Runnable runnable = new Runnable() {
+			public void run() {
+				Notification ubuntuDownload = new Notification(downloadApp, downloadStarted, "Test", "CallBack Notification");
+		        
+				final String context = "context";
+				final String contextType = "contextType";
+				
+				ubuntuDownload.setCallBackSocket(context, contextType);
+
+		        CallBackListener listener = new CallBackListener() {			
+					public void onTimeout(CallBackResponse response) {
+						checkCallBackResponse(response);
+					}
+					
+					public void onClose(CallBackResponse response) {
+						checkCallBackResponse(response);
+					}
+					
+					public void onClick(CallBackResponse response) {
+						checkCallBackResponse(response);
+					}
+					
+					private void checkCallBackResponse(CallBackResponse response) {
+						if (!response.getNotificationCallbackContext().equals(context) ||
+				        	!response.getNotificationCallbackContextType().equals(contextType)) {
+				        	
+				        	synchronized(callBackTestFailed) {
+				        		callBackTestFailed = true;
+					        }
+				        }
+
+						synchronized(callBackTestThreadsCompleted) {
+				        	callBackTestThreadsCompleted++;
+				        }
+					}
+				};
+		        
+		        growl.notify(ubuntuDownload, listener);
+			}
+		};
         
-        // finally send the notification
-        growl.notify(ubuntuDownload);
-        CallBackResponse response = (CallBackResponse) growl.getLastResponse();
-        
-        assertEquals("blah", response.getNotificationCallbackContext());
-        assertEquals("blah1", response.getNotificationCallbackContextType());
-	
+		int notificationCount = 3;
+		
+		for (int i = 0; i < notificationCount; i++) {
+			Thread thread = new Thread(runnable);
+			
+			thread.start();
+		}
+
+		// wait for all threads to finish. JUnit test will timeout after 11 seconds.
+		while ((int)callBackTestThreadsCompleted < notificationCount) {
+			Thread.sleep(100);
+		}
+		
+		assertEquals(false, callBackTestFailed);
     }
     
+    private static Integer callBackTestThreadsCompleted = 0;
+    private static Boolean callBackTestFailed = false;
+
     @Test
     public void testSubscribe() {
         growl.subsribe();
